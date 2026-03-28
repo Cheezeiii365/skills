@@ -1,48 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./import-skills.sh /path/to/new-repo [remote-git-url]
-TARGET_DIR="${1:-}"
-REMOTE_URL="${2:-}"
+REPO_URL="https://github.com/Cheezeiii365/skills.git"
+SKILLS_DIR=".claude/skills"
 
-if [ -z "$TARGET_DIR" ]; then
-  echo "Usage: $0 /path/to/new-repo [remote-git-url]"
-  exit 2
-fi
+# Allow running from anywhere inside a git repo
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "Error: not inside a git repository."
+  exit 1
+}
 
-# Source skills folder (update this path if your workspace is elsewhere)
-SOURCE_DIR="/Users/btodoy/Documents/Projects/Code/aide/aIDE/skills"
+TARGET="$ROOT/$SKILLS_DIR"
+TMP=$(mktemp -d)
 
-if [ ! -d "$SOURCE_DIR" ]; then
-  echo "Source folder not found: $SOURCE_DIR"
-  exit 3
-fi
+trap 'rm -rf "$TMP"' EXIT
 
-# Create target dir and copy files
-mkdir -p "$TARGET_DIR"
-cp -a "$SOURCE_DIR/." "$TARGET_DIR/"
+echo "Cloning skills repo..."
+git clone --depth 1 "$REPO_URL" "$TMP" 2>/dev/null
 
-cd "$TARGET_DIR"
+mkdir -p "$TARGET"
 
-# Initialize git repo and commit
-if [ ! -d .git ]; then
-  git init
-fi
+# Copy each skill directory (folders containing SKILL.md)
+for skill in "$TMP"/*/; do
+  [ -f "$skill/SKILL.md" ] || continue
+  name=$(basename "$skill")
+  rm -rf "$TARGET/$name"
+  cp -R "$skill" "$TARGET/$name"
+  echo "  Installed: $name"
+done
 
-# Ensure a branch exists (use main)
-git checkout -b main 2>/dev/null || git switch -c main 2>/dev/null || true
-git add --all
-git commit -m "Initial import: skills files" || echo "Nothing to commit"
-
-# If a remote URL was provided, add it and push
-if [ -n "$REMOTE_URL" ]; then
-  git remote remove origin 2>/dev/null || true
-  git remote add origin "$REMOTE_URL"
-  git branch -M main
-  git push -u origin main
-fi
-
-echo "Repository created at: $TARGET_DIR"
-if [ -n "$REMOTE_URL" ]; then
-  echo "Pushed to remote: $REMOTE_URL"
-fi
+echo "Skills installed to $TARGET"
